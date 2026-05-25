@@ -1,0 +1,129 @@
+feature_set: pjm_load_weather_minimal
+version: 0.1.0
+description: >
+  Minimal PJM hourly load forecasting feature recipe for initial weather-load
+  experiments. This configuration is hypothesis-driven and must be evaluated
+  with walk-forward validation before being treated as predictive evidence.
+
+scope:
+  iso: PJM
+  load_source: EIA-930
+  weather_source: ERA5 single-levels
+  dataset_config: configs/data/datasets/pjm_load_era5_sample.yaml
+  temporal_resolution: hourly
+  timezone: UTC
+
+target:
+  name: load_mw
+  horizon_hours: 1
+  timestamp_column: timestamp_utc
+  missing_target_policy: exclude_from_training_and_evaluation
+
+artifacts:
+  output_path: data/processed/features/pjm_load_weather_minimal_2023_0101_0107.parquet
+
+feature_availability:
+  load_history: observed_before_forecast_time
+  calendar: known_before_forecast_time
+  weather: realized_lagged
+  notes:
+    - Same-hour realized ERA5 weather is descriptive only and should not be used
+      for operational forecasting unless the target design explicitly permits it.
+    - Operational forecast weather can replace realized_lagged weather in a later
+      feature set.
+
+inputs:
+  load:
+    source_table: data/interim/eia930/pjm_hourly_load_2023.parquet
+    value_column: load_mw
+    missing_flag_column: is_missing_load
+    lags_hours:
+      - 1
+      - 24
+      - 168
+
+  calendar:
+    include:
+      - hour_utc
+      - dayofweek
+      - month
+      - is_weekend
+
+  weather:
+    source_table: data/interim/era5/era5_pjm_box_hourly_features_2023_0101_0107.parquet
+    spatial_representation: pjm_box_area_mean
+    variables:
+      - temperature_2m_f
+      - dewpoint_2m_c
+      - wind_speed_10m_ms
+      - total_cloud_cover_fraction
+      - total_precipitation_m
+      - surface_solar_radiation_downwards_j_m2
+    lags_hours:
+      - 1
+      - 3
+      - 24
+
+engineered_features:
+  degree_days:
+    base_temperature_f: 65
+    include:
+      - heating_degree_f
+      - cooling_degree_f
+
+  load_differences:
+    include:
+      - load_lag_1h_minus_load_lag_24h
+      - load_lag_24h_minus_load_lag_168h
+
+  weather_changes:
+    include:
+      - temperature_2m_f_lag_1h_minus_temperature_2m_f_lag_24h
+      - dewpoint_2m_c_lag_1h_minus_dewpoint_2m_c_lag_24h
+
+missingness:
+  load:
+    preserve_missing_rows: true
+    add_missing_flags: true
+    imputation: none_in_canonical_features
+    modeling_policy: exclude_rows_with_missing_target
+
+  weather:
+    preserve_missing_rows: true
+    add_missing_flags: true
+    imputation: none_initially
+    max_forward_fill_gap_hours: null
+
+evaluation:
+  validation_method: walk_forward
+  forbidden:
+    - random_train_test_split
+    - future_target_information
+    - same_hour_realized_weather_for_forward_forecast
+    - normalization_fit_on_full_dataset
+
+  baselines:
+    - persistence_1h
+    - seasonal_naive_24h
+    - seasonal_naive_168h
+    - calendar_load_profile
+
+  primary_metrics:
+    - mae
+    - rmse
+    - prediction_interval_coverage
+    - crps
+
+  regime_slices:
+    - season
+    - hour_of_day
+    - weekend_vs_weekday
+    - temperature_extreme
+    - missingness_flag
+
+lineage:
+  created_for: initial_pjm_eia930_era5_research_cycle
+  status: candidate
+  promotion_rule: >
+    Promote only after full-year or multi-year walk-forward evaluation shows
+    stable improvement over required baselines and acceptable regime behavior.
