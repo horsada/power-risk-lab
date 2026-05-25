@@ -24,11 +24,13 @@ def add_lags(frame: pd.DataFrame, columns: list[str], lags: list[int]) -> pd.Dat
     return features
 
 
-def add_target(frame: pd.DataFrame, target_column: str, horizon_hours: int) -> pd.DataFrame:
+def add_target(
+    frame: pd.DataFrame, target_column: str, horizon_hours: int
+) -> pd.DataFrame:
     features = frame.copy()
-    features[f"{target_column}_target_{horizon_hours}h"] = features[target_column].shift(
-        -horizon_hours
-    )
+    features[f"{target_column}_target_{horizon_hours}h"] = features[
+        target_column
+    ].shift(-horizon_hours)
     return features
 
 
@@ -67,7 +69,9 @@ def add_weather_changes(frame: pd.DataFrame, changes: list[str]) -> pd.DataFrame
     return features
 
 
-def add_missing_flags(frame: pd.DataFrame, candidate_columns: list[str]) -> pd.DataFrame:
+def add_missing_flags(
+    frame: pd.DataFrame, candidate_columns: list[str]
+) -> pd.DataFrame:
     features = frame.copy()
     for column in candidate_columns:
         if column in features:
@@ -92,8 +96,12 @@ def configured_feature_columns(config: dict) -> list[str]:
             feature_columns.append(f"{variable}_lag_{lag}h")
 
     feature_columns.extend(engineered_config.get("degree_days", {}).get("include", []))
-    feature_columns.extend(engineered_config.get("load_differences", {}).get("include", []))
-    feature_columns.extend(engineered_config.get("weather_changes", {}).get("include", []))
+    feature_columns.extend(
+        engineered_config.get("load_differences", {}).get("include", [])
+    )
+    feature_columns.extend(
+        engineered_config.get("weather_changes", {}).get("include", [])
+    )
 
     return feature_columns
 
@@ -108,7 +116,9 @@ def build_features_from_config(config_path: Path) -> pd.DataFrame:
     source_path = dataset_feature_path(config["scope"]["dataset_config"])
     output_path = resolve_project_path(config["artifacts"]["output_path"])
 
-    features = pd.read_parquet(source_path).sort_values(target_config["timestamp_column"])
+    features = pd.read_parquet(source_path).sort_values(
+        target_config["timestamp_column"]
+    )
     features[target_config["timestamp_column"]] = pd.to_datetime(
         features[target_config["timestamp_column"]],
         utc=True,
@@ -152,11 +162,16 @@ def build_features_from_config(config_path: Path) -> pd.DataFrame:
         engineered_config.get("weather_changes", {}).get("include", []),
     )
 
-    missing_flag_candidates = [load_config["value_column"], *weather_config.get("variables", [])]
+    missing_flag_candidates = [
+        load_config["value_column"],
+        *weather_config.get("variables", []),
+    ]
     features = add_missing_flags(features, missing_flag_candidates)
 
     feature_columns = configured_feature_columns(config)
-    missing_flag_columns = [f"{column}_is_missing" for column in missing_flag_candidates]
+    missing_flag_columns = [
+        f"{column}_is_missing" for column in missing_flag_candidates
+    ]
     metadata_columns = [
         target_config["timestamp_column"],
         target_column,
